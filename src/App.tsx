@@ -1,7 +1,8 @@
 import { Box, Container, Heading, Stack, Text, Badge } from '@chakra-ui/react'
 import { useState, useEffect } from 'react'
 
-const API_BASE_URL = 'https://pv-be-q7m9.onrender.com/api'
+const API_BASE_URL = "https://28ba71031123.ngrok-free.app/api"
+//'https://pv-be-q7m9.onrender.com/api'
 const POLL_INTERVAL = 1000 // Poll every 1 second
 
 interface Scores {
