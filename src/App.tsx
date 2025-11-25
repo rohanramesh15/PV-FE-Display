@@ -869,26 +869,6 @@ function App() {
               }}
             />
 
-            {/* Center divider indicator */}
-            <MotionBox
-              position="absolute"
-              top="50%"
-              bg="white"
-              w="6px"
-              h="90%"
-              borderRadius="full"
-              transform="translateY(-50%)"
-              initial={{ left: "50%" }}
-              animate={{
-                left: `${team1Percentage}%`,
-                scale: lastVotedTeam ? [1, 1.3, 1] : 1
-              }}
-              transition={{
-                left: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
-                scale: { duration: 0.3 }
-              }}
-              boxShadow="0 0 15px rgba(255, 255, 255, 0.9)"
-            />
 
             {/* Percentage labels */}
             <Flex
