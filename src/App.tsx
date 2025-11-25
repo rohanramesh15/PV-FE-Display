@@ -1,4 +1,4 @@
-import { Box, Container, Heading, Stack, Text, Badge, Image, Flex, Button, HStack } from '@chakra-ui/react'
+import { Box, Text, Image, Flex } from '@chakra-ui/react'
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import performer1 from './assets/performer1.png'
@@ -17,9 +17,13 @@ interface Particle {
   x: number
   y: number
   color: string
+  size: number
+  velocity: number
+  angle: number
 }
 
 const MotionBox = motion.create(Box)
+const MotionText = motion.create(Text)
 
 function App() {
   const [scores, setScores] = useState<Scores>({ team1: 0, team2: 0 })
@@ -29,10 +33,11 @@ function App() {
   const [team2Particles, setTeam2Particles] = useState<Particle[]>([])
   const [team1AnimKey, setTeam1AnimKey] = useState(0)
   const [team2AnimKey, setTeam2AnimKey] = useState(0)
+  const [lastVotedTeam, setLastVotedTeam] = useState<'team1' | 'team2' | null>(null)
   const [team1Scale, setTeam1Scale] = useState(1)
   const [team2Scale, setTeam2Scale] = useState(1)
-  const [team1BarScale, setTeam1BarScale] = useState(1)
-  const [team2BarScale, setTeam2BarScale] = useState(1)
+  const [team1Combo, setTeam1Combo] = useState(0)
+  const [team2Combo, setTeam2Combo] = useState(0)
   const particleIdRef = useRef(0)
   const team1LastVoteTime = useRef<number>(0)
   const team2LastVoteTime = useRef<number>(0)
@@ -56,703 +61,857 @@ function App() {
   }
 
   useEffect(() => {
-    // Fetch immediately on mount
     fetchScores()
-
-    // Set up polling interval
     const interval = setInterval(fetchScores, POLL_INTERVAL)
-
-    // Cleanup on unmount
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Trigger particle effects and animations when scores change
+  // Trigger animations when scores change
   useEffect(() => {
-    if (scores.team1 > prevScores.team1) {
+    if (scores.team1 > prevScores.team1 && scores.team2 === prevScores.team2) {
       const now = Date.now()
       const timeSinceLastVote = now - team1LastVoteTime.current
 
-      createParticles('team1')
+      setLastVotedTeam('team1')
       setTeam1AnimKey(prev => prev + 1)
 
-      // If within 0.5 seconds, add to the scale, otherwise reset
-      if (timeSinceLastVote < 500 && team1LastVoteTime.current > 0) {
-        const newScale = Math.min(team1Scale + 0.15, 1.6)
-        setTeam1Scale(newScale) // Cap at 1.6x
-        setTeam1BarScale(newScale) // Use same scale for bar
+      // Build combo for repeated votes
+      if (timeSinceLastVote < 2000 && team1LastVoteTime.current > 0) {
+        const newCombo = Math.min(team1Combo + 1, 10)
+        setTeam1Combo(newCombo)
+        setTeam1Scale(1.2 + newCombo * 0.15) // Scale grows with combo
       } else {
+        setTeam1Combo(1)
         setTeam1Scale(1.3)
-        setTeam1BarScale(1.3) // Use same scale for bar
       }
 
+      createParticles('team1', team1Combo)
       team1LastVoteTime.current = now
 
-      // Reset scale after animation completes
       setTimeout(() => {
         setTeam1Scale(1)
-        setTeam1BarScale(1)
-      }, 600)
+      }, 800)
+
+      // Reset combo after inactivity
+      setTimeout(() => {
+        setTeam1Combo(0)
+      }, 2500)
     }
 
-    if (scores.team2 > prevScores.team2) {
+    if (scores.team2 > prevScores.team2 && scores.team1 === prevScores.team1) {
       const now = Date.now()
       const timeSinceLastVote = now - team2LastVoteTime.current
 
-      createParticles('team2')
+      setLastVotedTeam('team2')
       setTeam2AnimKey(prev => prev + 1)
 
-      // If within 0.5 seconds, add to the scale, otherwise reset
-      if (timeSinceLastVote < 500 && team2LastVoteTime.current > 0) {
-        const newScale = Math.min(team2Scale + 0.15, 1.6)
-        setTeam2Scale(newScale) // Cap at 1.6x
-        setTeam2BarScale(newScale) // Use same scale for bar
+      if (timeSinceLastVote < 2000 && team2LastVoteTime.current > 0) {
+        const newCombo = Math.min(team2Combo + 1, 10)
+        setTeam2Combo(newCombo)
+        setTeam2Scale(1.2 + newCombo * 0.15)
       } else {
+        setTeam2Combo(1)
         setTeam2Scale(1.3)
-        setTeam2BarScale(1.3) // Use same scale for bar
       }
 
+      createParticles('team2', team2Combo)
       team2LastVoteTime.current = now
 
-      // Reset scale after animation completes
       setTimeout(() => {
         setTeam2Scale(1)
-        setTeam2BarScale(1)
-      }, 600)
+      }, 800)
+
+      setTimeout(() => {
+        setTeam2Combo(0)
+      }, 2500)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scores.team1, scores.team2])
 
-  const createParticles = (team: 'team1' | 'team2') => {
+  const createParticles = (team: 'team1' | 'team2', combo: number) => {
     const newParticles: Particle[] = []
+    // Using cyan/teal for team 1 and pink/magenta for team 2
     const colors = team === 'team1'
-      ? ['#3182ce', '#63b3ed', '#4299e1', '#2c5282']
-      : ['#e53e3e', '#fc8181', '#f56565', '#c53030']
+      ? ['#06b6d4', '#22d3ee', '#67e8f9', '#a5f3fc', '#ffffff'] // Cyan shades + white
+      : ['#ec4899', '#f472b6', '#f9a8d4', '#fbcfe8', '#ffffff'] // Pink/magenta shades + white
 
-    for (let i = 0; i < 15; i++) {
+    // More particles with higher combo - bigger explosion
+    const particleCount = 30 + combo * 12
+
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.5
+      const velocity = 150 + Math.random() * 200 + combo * 30
       newParticles.push({
         id: particleIdRef.current++,
-        x: Math.random() * 100 - 50,
-        y: Math.random() * 100 - 50,
-        color: colors[Math.floor(Math.random() * colors.length)]
+        x: Math.cos(angle) * velocity,
+        y: Math.sin(angle) * velocity,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 6 + Math.random() * 20 + combo * 3,
+        velocity,
+        angle
       })
     }
 
     if (team === 'team1') {
       setTeam1Particles(newParticles)
-      setTimeout(() => setTeam1Particles([]), 1000)
+      setTimeout(() => setTeam1Particles([]), 2000)
     } else {
       setTeam2Particles(newParticles)
-      setTimeout(() => setTeam2Particles([]), 1000)
+      setTimeout(() => setTeam2Particles([]), 2000)
     }
   }
 
   const totalVotes = scores.team1 + scores.team2
-  const team1Percentage = totalVotes === 0 ? 0 : (scores.team1 / totalVotes) * 100
-  const team2Percentage = totalVotes === 0 ? 0 : (scores.team2 / totalVotes) * 100
+  const team1Percentage = totalVotes === 0 ? 50 : (scores.team1 / totalVotes) * 100
+
+  // Ring sizes based on combo
+  const getRingSize = (combo: number) => 250 + combo * 30
+  const getRingScale = (combo: number) => 2.5 + combo * 0.3
 
   return (
     <Box
       minH="100vh"
-      bg="gray.900"
-      py={10}
-      px={6}
+      bg="linear-gradient(180deg, rgba(88, 28, 135, 0.4) 0%, rgba(15, 23, 42, 1) 40%, rgba(15, 23, 42, 1) 100%)"
       position="relative"
+      overflow="hidden"
     >
-      {/* Background Flash Overlay */}
+      {/* Decorative glow at top */}
+      <Box
+        position="absolute"
+        top="-15%"
+        left="50%"
+        transform="translateX(-50%)"
+        w="800px"
+        h="800px"
+        bg="radial-gradient(circle, rgba(168, 85, 247, 0.35) 0%, transparent 70%)"
+        pointerEvents="none"
+      />
+
+      {/* Full screen flash for Team 1 - multiple layers for depth */}
       <AnimatePresence>
-        {team1AnimKey > 0 && scores.team1 > prevScores.team1 && (
-          <MotionBox
-            key={`bg1-${team1AnimKey}`}
-            position="fixed"
-            top="0"
-            left="0"
-            right="0"
-            bottom="0"
-            bg="blue.900"
-            pointerEvents="none"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.3, 0] }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            zIndex={1}
-          />
+        {team1AnimKey > 0 && lastVotedTeam === 'team1' && (
+          <>
+            {/* Main flash */}
+            <MotionBox
+              key={`flash1-${team1AnimKey}`}
+              position="fixed"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              bg={`radial-gradient(circle at 25% 50%, rgba(6, 182, 212, ${0.5 + team1Combo * 0.1}) 0%, transparent 60%)`}
+              pointerEvents="none"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: [0, 1, 0.8, 0], scale: [0.8, 1.2, 1.1, 1] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8 + team1Combo * 0.1, ease: [0.22, 1, 0.36, 1] }}
+              zIndex={1}
+            />
+            {/* Secondary pulse wave */}
+            <MotionBox
+              key={`flash1b-${team1AnimKey}`}
+              position="fixed"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              bg={`radial-gradient(circle at 25% 50%, rgba(34, 211, 238, ${0.3 + team1Combo * 0.05}) 0%, transparent 50%)`}
+              pointerEvents="none"
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: [0, 0.8, 0], scale: [0.5, 1.5, 2] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.2 + team1Combo * 0.1, ease: "easeOut", delay: 0.1 }}
+              zIndex={1}
+            />
+          </>
         )}
       </AnimatePresence>
 
+      {/* Full screen flash for Team 2 - multiple layers for depth */}
       <AnimatePresence>
-        {team2AnimKey > 0 && scores.team2 > prevScores.team2 && (
-          <MotionBox
-            key={`bg2-${team2AnimKey}`}
-            position="fixed"
-            top="0"
-            left="0"
-            right="0"
-            bottom="0"
-            bg="red.900"
-            pointerEvents="none"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.3, 0] }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            zIndex={1}
-          />
-        )}
-      </AnimatePresence>
-      {/* Screen Border Flash */}
-      <AnimatePresence>
-        {team1AnimKey > 0 && scores.team1 > prevScores.team1 && (
-          <MotionBox
-            key={`border1-${team1AnimKey}`}
-            position="fixed"
-            top="0"
-            left="0"
-            right="0"
-            bottom="0"
-            border="8px solid"
-            borderColor="blue.400"
-            pointerEvents="none"
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            zIndex={9999}
-            boxShadow="inset 0 0 100px rgba(66, 153, 225, 0.8)"
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {team2AnimKey > 0 && scores.team2 > prevScores.team2 && (
-          <MotionBox
-            key={`border2-${team2AnimKey}`}
-            position="fixed"
-            top="0"
-            left="0"
-            right="0"
-            bottom="0"
-            border="8px solid"
-            borderColor="red.400"
-            pointerEvents="none"
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            zIndex={9999}
-            boxShadow="inset 0 0 100px rgba(229, 62, 62, 0.8)"
-          />
+        {team2AnimKey > 0 && lastVotedTeam === 'team2' && (
+          <>
+            {/* Main flash */}
+            <MotionBox
+              key={`flash2-${team2AnimKey}`}
+              position="fixed"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              bg={`radial-gradient(circle at 75% 50%, rgba(236, 72, 153, ${0.5 + team2Combo * 0.1}) 0%, transparent 60%)`}
+              pointerEvents="none"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: [0, 1, 0.8, 0], scale: [0.8, 1.2, 1.1, 1] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8 + team2Combo * 0.1, ease: [0.22, 1, 0.36, 1] }}
+              zIndex={1}
+            />
+            {/* Secondary pulse wave */}
+            <MotionBox
+              key={`flash2b-${team2AnimKey}`}
+              position="fixed"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              bg={`radial-gradient(circle at 75% 50%, rgba(244, 114, 182, ${0.3 + team2Combo * 0.05}) 0%, transparent 50%)`}
+              pointerEvents="none"
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: [0, 0.8, 0], scale: [0.5, 1.5, 2] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.2 + team2Combo * 0.1, ease: "easeOut", delay: 0.1 }}
+              zIndex={1}
+            />
+          </>
         )}
       </AnimatePresence>
 
-      {/* Connection Status - Top Right */}
-      <Box position="fixed" top={4} right={4} zIndex={9999}>
-        <Badge
-          colorScheme={isConnected ? 'green' : 'red'}
-          fontSize="xs"
-          px={2}
-          py={1}
-          borderRadius="md"
-        >
-          {isConnected ? 'C' : 'D'}
-        </Badge>
+      {/* Border flash Team 1 - with energetic pulse */}
+      <AnimatePresence>
+        {team1AnimKey > 0 && lastVotedTeam === 'team1' && (
+          <>
+            <MotionBox
+              key={`border1-${team1AnimKey}`}
+              position="fixed"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              border={`${10 + team1Combo * 3}px solid`}
+              borderColor="cyan.400"
+              pointerEvents="none"
+              initial={{ opacity: 1, scale: 1.02 }}
+              animate={{ opacity: [1, 0.8, 0], scale: [1.02, 1, 0.98] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              zIndex={9999}
+              boxShadow={`inset 0 0 ${120 + team1Combo * 40}px rgba(6, 182, 212, 0.9)`}
+            />
+            {/* Inner glow pulse */}
+            <MotionBox
+              key={`border1-inner-${team1AnimKey}`}
+              position="fixed"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              pointerEvents="none"
+              initial={{ opacity: 0.8 }}
+              animate={{ opacity: [0.8, 0.4, 0] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.2, ease: "easeOut" }}
+              zIndex={9998}
+              boxShadow={`inset 0 0 ${200 + team1Combo * 60}px rgba(34, 211, 238, 0.5)`}
+            />
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Border flash Team 2 - with energetic pulse */}
+      <AnimatePresence>
+        {team2AnimKey > 0 && lastVotedTeam === 'team2' && (
+          <>
+            <MotionBox
+              key={`border2-${team2AnimKey}`}
+              position="fixed"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              border={`${10 + team2Combo * 3}px solid`}
+              borderColor="pink.400"
+              pointerEvents="none"
+              initial={{ opacity: 1, scale: 1.02 }}
+              animate={{ opacity: [1, 0.8, 0], scale: [1.02, 1, 0.98] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              zIndex={9999}
+              boxShadow={`inset 0 0 ${120 + team2Combo * 40}px rgba(236, 72, 153, 0.9)`}
+            />
+            {/* Inner glow pulse */}
+            <MotionBox
+              key={`border2-inner-${team2AnimKey}`}
+              position="fixed"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              pointerEvents="none"
+              initial={{ opacity: 0.8 }}
+              animate={{ opacity: [0.8, 0.4, 0] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.2, ease: "easeOut" }}
+              zIndex={9998}
+              boxShadow={`inset 0 0 ${200 + team2Combo * 60}px rgba(244, 114, 182, 0.5)`}
+            />
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Connection indicator */}
+      <Box position="fixed" top={6} right={6} zIndex={9999}>
+        <Box
+          w={3}
+          h={3}
+          borderRadius="full"
+          bg={isConnected ? 'green.400' : 'red.400'}
+          boxShadow={isConnected ? '0 0 10px rgba(72, 187, 120, 0.8)' : '0 0 10px rgba(245, 101, 101, 0.8)'}
+        />
       </Box>
 
-      <Container maxW="container.xl">
-        <Stack gap={12}>
-          {/* Header */}
-          <Box textAlign="center">
-            <Heading
-              size="3xl"
+      {/* Main Content */}
+      <Flex
+        direction="column"
+        align="center"
+        justify="space-between"
+        minH="100vh"
+        px={8}
+        py={8}
+        position="relative"
+        zIndex={2}
+      >
+        {/* Header */}
+        <Box textAlign="center" mb={4}>
+          <Text
+            color="purple.300"
+            fontSize="sm"
+            letterSpacing="widest"
+            textTransform="uppercase"
+            fontWeight="medium"
+            mb={1}
+          >
+            Live
+          </Text>
+          <Text
+            color="white"
+            fontSize="5xl"
+            fontWeight="bold"
+            letterSpacing="tight"
+          >
+            Dance Battle
+          </Text>
+        </Box>
+
+        {/* Battle Arena */}
+        <Flex
+          align="center"
+          justify="center"
+          gap={8}
+          w="100%"
+          flex={1}
+        >
+          {/* Team 1 */}
+          <Flex direction="column" align="center" flex={1}>
+            <MotionBox
+              position="relative"
+              mb={4}
+              animate={{
+                scale: team1Scale,
+                rotate: team1Scale > 1 ? [0, -5 - team1Combo * 2, 5 + team1Combo * 2, -3 - team1Combo, 3 + team1Combo, 0] : 0,
+                y: team1Scale > 1 ? [0, -15 - team1Combo * 3, 0] : 0
+              }}
+              transition={{
+                duration: 0.6,
+                ease: [0.34, 1.56, 0.64, 1], // Spring-like bounce
+                rotate: { duration: 0.5, ease: "easeOut" }
+              }}
+            >
+              {/* Expanding Ripple Rings - size based on combo */}
+              <AnimatePresence mode="sync">
+                {team1AnimKey > 0 && (
+                  <>
+                    {[0, 1, 2, 3, 4, 5].slice(0, 4 + Math.floor(team1Combo / 2)).map((i) => (
+                      <MotionBox
+                        key={`ring-${team1AnimKey}-${i}`}
+                        position="absolute"
+                        top="50%"
+                        left="50%"
+                        w={`${getRingSize(team1Combo)}px`}
+                        h={`${getRingSize(team1Combo)}px`}
+                        borderRadius="full"
+                        border={`${5 + team1Combo * 1.5}px solid`}
+                        borderColor={i % 2 === 0 ? "cyan.300" : "teal.200"}
+                        initial={{ scale: 0.8, opacity: 1, x: '-50%', y: '-50%' }}
+                        animate={{ scale: getRingScale(team1Combo) + i * 0.3, opacity: 0, x: '-50%', y: '-50%' }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: 1.0 + team1Combo * 0.08,
+                          ease: [0.22, 1, 0.36, 1], // Smooth deceleration
+                          delay: i * 0.08
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+              </AnimatePresence>
+
+              {/* Radiating emojis */}
+              <AnimatePresence mode="sync">
+                {team1AnimKey > 0 && (
+                  <>
+                    {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].slice(0, 10 + team1Combo).map((angle, idx) => {
+                      const rad = (angle * Math.PI) / 180
+                      const distance = 220 + team1Combo * 35
+                      const wobble = Math.sin(idx * 0.5) * 20
+                      return (
+                        <MotionBox
+                          key={`star-${team1AnimKey}-${idx}`}
+                          position="absolute"
+                          top="50%"
+                          left="50%"
+                          fontSize={`${28 + team1Combo * 5}px`}
+                          initial={{ x: 0, y: 0, opacity: 1, scale: 0, rotate: 0 }}
+                          animate={{
+                            x: [0, Math.cos(rad) * distance * 0.5 + wobble, Math.cos(rad) * distance],
+                            y: [0, Math.sin(rad) * distance * 0.5 + wobble, Math.sin(rad) * distance],
+                            opacity: [1, 1, 0],
+                            scale: [0, 1.5 + team1Combo * 0.3, 0.8],
+                            rotate: [0, 180, 360 + idx * 30]
+                          }}
+                          exit={{ opacity: 0 }}
+                          transition={{
+                            duration: 1.0,
+                            ease: [0.22, 1, 0.36, 1],
+                            delay: idx * 0.02
+                          }}
+                        >
+                          ✨
+                        </MotionBox>
+                      )
+                    })}
+                  </>
+                )}
+              </AnimatePresence>
+
+              <Image
+                src={performer1}
+                alt="Team 1"
+                boxSize="200px"
+                borderRadius="full"
+                border="6px solid"
+                borderColor="cyan.400"
+                bg="white"
+                objectFit="cover"
+                boxShadow={`0 0 ${40 + team1Combo * 15}px rgba(6, 182, 212, ${0.6 + team1Combo * 0.1})`}
+              />
+
+              {/* Particles */}
+              <AnimatePresence>
+                {team1Particles.map((particle, idx) => (
+                  <MotionBox
+                    key={particle.id}
+                    position="absolute"
+                    top="50%"
+                    left="50%"
+                    w={`${particle.size}px`}
+                    h={`${particle.size}px`}
+                    borderRadius="full"
+                    bg={particle.color}
+                    initial={{ opacity: 1, x: 0, y: 0, scale: 0 }}
+                    animate={{
+                      opacity: [1, 1, 0],
+                      x: [0, particle.x * 0.6, particle.x],
+                      y: [0, particle.y * 0.6 - 30, particle.y + 20],
+                      scale: [0, 1.5, 0.3]
+                    }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      duration: 1.4,
+                      ease: [0.22, 1, 0.36, 1],
+                      delay: idx * 0.01
+                    }}
+                    boxShadow={`0 0 ${particle.size * 1.5}px ${particle.color}`}
+                  />
+                ))}
+              </AnimatePresence>
+            </MotionBox>
+
+            {/* Team 1 label */}
+            <Text
+              color="cyan.300"
+              fontSize="sm"
+              letterSpacing="widest"
+              textTransform="uppercase"
+              fontWeight="medium"
               mb={2}
-              bgGradient="linear(to-r, cyan.400, purple.500, pink.500)"
-              bgClip="text"
-              fontWeight="extrabold"
             >
-              DANCE BATTLE
-            </Heading>
+              Team 1
+            </Text>
 
-            {/* Total Votes */}
-            <Box
-              display="inline-block"
-              bg="gray.800"
-              px={6}
-              py={3}
+            {/* Team 1 Score */}
+            <MotionText
+              color="white"
+              fontSize="8xl"
+              fontWeight="bold"
+              lineHeight="1"
+              animate={{
+                scale: team1Scale > 1 ? [1, 1.3, 0.95, 1.1, 1] : 1,
+                y: team1Scale > 1 ? [0, -10, 5, 0] : 0,
+                textShadow: team1Scale > 1
+                  ? [
+                      '0 0 0px rgba(6, 182, 212, 0)',
+                      `0 0 ${40 + team1Combo * 10}px rgba(6, 182, 212, 1)`,
+                      '0 0 20px rgba(6, 182, 212, 0.5)',
+                      '0 0 0px rgba(6, 182, 212, 0)'
+                    ]
+                  : '0 0 0px rgba(6, 182, 212, 0)'
+              }}
+              transition={{
+                duration: 0.5,
+                ease: [0.34, 1.56, 0.64, 1]
+              }}
+            >
+              {scores.team1}
+            </MotionText>
+
+            {/* Combo indicator */}
+            <AnimatePresence>
+              {team1Combo > 1 && (
+                <MotionText
+                  color="cyan.300"
+                  fontSize={`${18 + team1Combo * 2}px`}
+                  fontWeight="bold"
+                  textShadow={`0 0 ${20 + team1Combo * 5}px rgba(6, 182, 212, 0.8)`}
+                  initial={{ opacity: 0, y: 20, scale: 0.5 }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    scale: [1, 1.1 + team1Combo * 0.05, 1],
+                    rotate: [0, -3, 3, 0]
+                  }}
+                  exit={{ opacity: 0, scale: 0.5 }}
+                  transition={{
+                    duration: 0.4,
+                    ease: [0.34, 1.56, 0.64, 1]
+                  }}
+                >
+                  {team1Combo}x COMBO!
+                </MotionText>
+              )}
+            </AnimatePresence>
+          </Flex>
+
+          {/* Center VS */}
+          <Box>
+            <Text
+              color="whiteAlpha.500"
+              fontSize="5xl"
+              fontWeight="bold"
+              letterSpacing="wider"
+            >
+              VS
+            </Text>
+          </Box>
+
+          {/* Team 2 */}
+          <Flex direction="column" align="center" flex={1}>
+            <MotionBox
+              position="relative"
+              mb={4}
+              animate={{
+                scale: team2Scale,
+                rotate: team2Scale > 1 ? [0, 5 + team2Combo * 2, -5 - team2Combo * 2, 3 + team2Combo, -3 - team2Combo, 0] : 0,
+                y: team2Scale > 1 ? [0, -15 - team2Combo * 3, 0] : 0
+              }}
+              transition={{
+                duration: 0.6,
+                ease: [0.34, 1.56, 0.64, 1], // Spring-like bounce
+                rotate: { duration: 0.5, ease: "easeOut" }
+              }}
+            >
+              {/* Expanding Ripple Rings */}
+              <AnimatePresence mode="sync">
+                {team2AnimKey > 0 && (
+                  <>
+                    {[0, 1, 2, 3, 4, 5].slice(0, 4 + Math.floor(team2Combo / 2)).map((i) => (
+                      <MotionBox
+                        key={`ring-${team2AnimKey}-${i}`}
+                        position="absolute"
+                        top="50%"
+                        left="50%"
+                        w={`${getRingSize(team2Combo)}px`}
+                        h={`${getRingSize(team2Combo)}px`}
+                        borderRadius="full"
+                        border={`${5 + team2Combo * 1.5}px solid`}
+                        borderColor={i % 2 === 0 ? "pink.300" : "pink.200"}
+                        initial={{ scale: 0.8, opacity: 1, x: '-50%', y: '-50%' }}
+                        animate={{ scale: getRingScale(team2Combo) + i * 0.3, opacity: 0, x: '-50%', y: '-50%' }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: 1.0 + team2Combo * 0.08,
+                          ease: [0.22, 1, 0.36, 1], // Smooth deceleration
+                          delay: i * 0.08
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+              </AnimatePresence>
+
+              {/* Radiating emojis */}
+              <AnimatePresence mode="sync">
+                {team2AnimKey > 0 && (
+                  <>
+                    {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].slice(0, 10 + team2Combo).map((angle, idx) => {
+                      const rad = (angle * Math.PI) / 180
+                      const distance = 220 + team2Combo * 35
+                      const wobble = Math.sin(idx * 0.5) * 20
+                      return (
+                        <MotionBox
+                          key={`heart-${team2AnimKey}-${idx}`}
+                          position="absolute"
+                          top="50%"
+                          left="50%"
+                          fontSize={`${28 + team2Combo * 5}px`}
+                          initial={{ x: 0, y: 0, opacity: 1, scale: 0, rotate: 0 }}
+                          animate={{
+                            x: [0, Math.cos(rad) * distance * 0.5 + wobble, Math.cos(rad) * distance],
+                            y: [0, Math.sin(rad) * distance * 0.5 + wobble, Math.sin(rad) * distance],
+                            opacity: [1, 1, 0],
+                            scale: [0, 1.5 + team2Combo * 0.3, 0.8],
+                            rotate: [0, 180, 360 + idx * 30]
+                          }}
+                          exit={{ opacity: 0 }}
+                          transition={{
+                            duration: 1.0,
+                            ease: [0.22, 1, 0.36, 1],
+                            delay: idx * 0.02
+                          }}
+                        >
+                          💖
+                        </MotionBox>
+                      )
+                    })}
+                  </>
+                )}
+              </AnimatePresence>
+
+              <Image
+                src={performer2}
+                alt="Team 2"
+                boxSize="200px"
+                borderRadius="full"
+                border="6px solid"
+                borderColor="pink.400"
+                bg="white"
+                objectFit="cover"
+                boxShadow={`0 0 ${40 + team2Combo * 15}px rgba(236, 72, 153, ${0.6 + team2Combo * 0.1})`}
+              />
+
+              {/* Particles */}
+              <AnimatePresence>
+                {team2Particles.map((particle, idx) => (
+                  <MotionBox
+                    key={particle.id}
+                    position="absolute"
+                    top="50%"
+                    left="50%"
+                    w={`${particle.size}px`}
+                    h={`${particle.size}px`}
+                    borderRadius="full"
+                    bg={particle.color}
+                    initial={{ opacity: 1, x: 0, y: 0, scale: 0 }}
+                    animate={{
+                      opacity: [1, 1, 0],
+                      x: [0, particle.x * 0.6, particle.x],
+                      y: [0, particle.y * 0.6 - 30, particle.y + 20],
+                      scale: [0, 1.5, 0.3]
+                    }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      duration: 1.4,
+                      ease: [0.22, 1, 0.36, 1],
+                      delay: idx * 0.01
+                    }}
+                    boxShadow={`0 0 ${particle.size * 1.5}px ${particle.color}`}
+                  />
+                ))}
+              </AnimatePresence>
+            </MotionBox>
+
+            {/* Team 2 label */}
+            <Text
+              color="pink.300"
+              fontSize="sm"
+              letterSpacing="widest"
+              textTransform="uppercase"
+              fontWeight="medium"
+              mb={2}
+            >
+              Team 2
+            </Text>
+
+            {/* Team 2 Score */}
+            <MotionText
+              color="white"
+              fontSize="8xl"
+              fontWeight="bold"
+              lineHeight="1"
+              animate={{
+                scale: team2Scale > 1 ? [1, 1.3, 0.95, 1.1, 1] : 1,
+                y: team2Scale > 1 ? [0, -10, 5, 0] : 0,
+                textShadow: team2Scale > 1
+                  ? [
+                      '0 0 0px rgba(236, 72, 153, 0)',
+                      `0 0 ${40 + team2Combo * 10}px rgba(236, 72, 153, 1)`,
+                      '0 0 20px rgba(236, 72, 153, 0.5)',
+                      '0 0 0px rgba(236, 72, 153, 0)'
+                    ]
+                  : '0 0 0px rgba(236, 72, 153, 0)'
+              }}
+              transition={{
+                duration: 0.5,
+                ease: [0.34, 1.56, 0.64, 1]
+              }}
+            >
+              {scores.team2}
+            </MotionText>
+
+            {/* Combo indicator */}
+            <AnimatePresence>
+              {team2Combo > 1 && (
+                <MotionText
+                  color="pink.300"
+                  fontSize={`${18 + team2Combo * 2}px`}
+                  fontWeight="bold"
+                  textShadow={`0 0 ${20 + team2Combo * 5}px rgba(236, 72, 153, 0.8)`}
+                  initial={{ opacity: 0, y: 20, scale: 0.5 }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    scale: [1, 1.1 + team2Combo * 0.05, 1],
+                    rotate: [0, 3, -3, 0]
+                  }}
+                  exit={{ opacity: 0, scale: 0.5 }}
+                  transition={{
+                    duration: 0.4,
+                    ease: [0.34, 1.56, 0.64, 1]
+                  }}
+                >
+                  {team2Combo}x COMBO!
+                </MotionText>
+              )}
+            </AnimatePresence>
+          </Flex>
+        </Flex>
+
+        {/* Bottom: Horizontal Progress Bar */}
+        <Box w="100%" maxW="900px" px={4} mb={8}>
+          {/* Total votes */}
+          <Text
+            color="whiteAlpha.500"
+            fontSize="sm"
+            textAlign="center"
+            mb={3}
+          >
+            {totalVotes} votes cast
+          </Text>
+
+          {/* Progress bar container */}
+          <Box
+            h="60px"
+            bg="whiteAlpha.100"
+            borderRadius="full"
+            overflow="hidden"
+            position="relative"
+            border="2px solid"
+            borderColor="whiteAlpha.200"
+          >
+            {/* Team 1 bar (cyan, from left) */}
+            <MotionBox
+              position="absolute"
+              top="0"
+              left="0"
+              bottom="0"
+              bg="linear-gradient(90deg, rgba(6, 182, 212, 0.95) 0%, rgba(34, 211, 238, 0.95) 100%)"
               borderRadius="full"
-              border="2px solid"
-              borderColor="purple.500"
-              boxShadow="0 0 20px rgba(168, 85, 247, 0.4)"
+              initial={{ width: "50%" }}
+              animate={{
+                width: `${team1Percentage}%`,
+                boxShadow: lastVotedTeam === 'team1'
+                  ? [
+                      '0 0 30px rgba(6, 182, 212, 0.6)',
+                      `0 0 ${60 + team1Combo * 15}px rgba(6, 182, 212, 1)`,
+                      '0 0 30px rgba(6, 182, 212, 0.6)'
+                    ]
+                  : '0 0 30px rgba(6, 182, 212, 0.6)'
+              }}
+              transition={{
+                width: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
+                boxShadow: { duration: 0.5 }
+              }}
+            />
+
+            {/* Team 2 bar (pink, from right) */}
+            <MotionBox
+              position="absolute"
+              top="0"
+              right="0"
+              bottom="0"
+              bg="linear-gradient(90deg, rgba(244, 114, 182, 0.95) 0%, rgba(236, 72, 153, 0.95) 100%)"
+              borderRadius="full"
+              initial={{ width: "50%" }}
+              animate={{
+                width: `${100 - team1Percentage}%`,
+                boxShadow: lastVotedTeam === 'team2'
+                  ? [
+                      '0 0 30px rgba(236, 72, 153, 0.6)',
+                      `0 0 ${60 + team2Combo * 15}px rgba(236, 72, 153, 1)`,
+                      '0 0 30px rgba(236, 72, 153, 0.6)'
+                    ]
+                  : '0 0 30px rgba(236, 72, 153, 0.6)'
+              }}
+              transition={{
+                width: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
+                boxShadow: { duration: 0.5 }
+              }}
+            />
+
+            {/* Center divider indicator */}
+            <MotionBox
+              position="absolute"
+              top="50%"
+              bg="white"
+              w="6px"
+              h="90%"
+              borderRadius="full"
+              transform="translateY(-50%)"
+              initial={{ left: "50%" }}
+              animate={{
+                left: `${team1Percentage}%`,
+                scale: lastVotedTeam ? [1, 1.3, 1] : 1
+              }}
+              transition={{
+                left: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
+                scale: { duration: 0.3 }
+              }}
+              boxShadow="0 0 15px rgba(255, 255, 255, 0.9)"
+            />
+
+            {/* Percentage labels */}
+            <Flex
+              position="absolute"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              align="center"
+              justify="space-between"
+              px={6}
             >
-              <Text fontSize="lg" color="purple.300" fontWeight="bold">
-                Total Votes: <Text as="span" color="white" fontSize="xl">{totalVotes}</Text>
+              <Text color="white" fontSize="xl" fontWeight="bold" textShadow="0 2px 4px rgba(0,0,0,0.5)">
+                {Math.round(team1Percentage)}%
               </Text>
-            </Box>
-          </Box>
-
-          {/* Team 1 Section */}
-          <Box position="relative">
-            <Flex align="center" gap={8} mb={4}>
-              <MotionBox
-                position="relative"
-                animate={{
-                  scale: team1Scale,
-                  rotate: team1Scale > 1 ? [0, -5, 5, 0] : 0
-                }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-              >
-                {/* Expanding Ripple Rings */}
-                <AnimatePresence mode="sync">
-                  {team1AnimKey > 0 && (
-                    <>
-                      <MotionBox
-                        key={`ring1-${team1AnimKey}`}
-                        position="absolute"
-                        top="50%"
-                        left="50%"
-                        w="200px"
-                        h="200px"
-                        borderRadius="full"
-                        border="4px solid"
-                        borderColor="blue.300"
-                        initial={{ scale: 1, opacity: 1, x: '-50%', y: '-50%' }}
-                        animate={{ scale: 2.5, opacity: 0, x: '-50%', y: '-50%' }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1, ease: "easeOut" }}
-                      />
-                      <MotionBox
-                        key={`ring2-${team1AnimKey}`}
-                        position="absolute"
-                        top="50%"
-                        left="50%"
-                        w="200px"
-                        h="200px"
-                        borderRadius="full"
-                        border="4px solid"
-                        borderColor="cyan.300"
-                        initial={{ scale: 1, opacity: 1, x: '-50%', y: '-50%' }}
-                        animate={{ scale: 2.8, opacity: 0, x: '-50%', y: '-50%' }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1.2, ease: "easeOut", delay: 0.1 }}
-                      />
-                      <MotionBox
-                        key={`ring3-${team1AnimKey}`}
-                        position="absolute"
-                        top="50%"
-                        left="50%"
-                        w="200px"
-                        h="200px"
-                        borderRadius="full"
-                        border="3px solid"
-                        borderColor="blue.200"
-                        initial={{ scale: 1, opacity: 1, x: '-50%', y: '-50%' }}
-                        animate={{ scale: 3.2, opacity: 0, x: '-50%', y: '-50%' }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1.4, ease: "easeOut", delay: 0.2 }}
-                      />
-                    </>
-                  )}
-                </AnimatePresence>
-
-                {/* Radiating Stars */}
-                <AnimatePresence mode="sync">
-                  {team1AnimKey > 0 && (
-                    <>
-                      {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, idx) => {
-                        const rad = (angle * Math.PI) / 180
-                        const distance = 150
-                        return (
-                          <MotionBox
-                            key={`star-${team1AnimKey}-${idx}`}
-                            position="absolute"
-                            top="50%"
-                            left="50%"
-                            fontSize="2xl"
-                            initial={{
-                              x: 0,
-                              y: 0,
-                              opacity: 1,
-                              scale: 0,
-                              rotate: 0
-                            }}
-                            animate={{
-                              x: Math.cos(rad) * distance,
-                              y: Math.sin(rad) * distance,
-                              opacity: 0,
-                              scale: 1.5,
-                              rotate: 360
-                            }}
-                            exit={{ opacity: 0 }}
-                            transition={{
-                              duration: 1,
-                              ease: "easeOut",
-                              delay: idx * 0.05
-                            }}
-                          >
-                            ✨
-                          </MotionBox>
-                        )
-                      })}
-                    </>
-                  )}
-                </AnimatePresence>
-
-                <Image
-                  src={performer1}
-                  alt="Team 1"
-                  boxSize="200px"
-                  borderRadius="full"
-                  border="8px solid"
-                  borderColor="blue.400"
-                  bg="white"
-                  objectFit="cover"
-                  boxShadow="0 0 40px rgba(66, 153, 225, 0.8)"
-                />
-
-                {/* Enhanced Particles */}
-                <AnimatePresence>
-                  {team1Particles.map(particle => (
-                    <MotionBox
-                      key={particle.id}
-                      position="absolute"
-                      top="50%"
-                      left="50%"
-                      w="16px"
-                      h="16px"
-                      borderRadius="full"
-                      bg={particle.color}
-                      initial={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                      animate={{
-                        opacity: 0,
-                        x: particle.x,
-                        y: particle.y,
-                        scale: 0
-                      }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      boxShadow={`0 0 8px ${particle.color}`}
-                    />
-                  ))}
-                </AnimatePresence>
-              </MotionBox>
-
-              <Box flex="1">
-                <Box mb={2}>
-                  <Heading size="xl" color="blue.300">
-                    TEAM 1
-                  </Heading>
-                </Box>
-
-                {/* Progress Bar Container */}
-                <MotionBox
-                  bg="gray.800"
-                  h="120px"
-                  borderRadius="full"
-                  overflow="hidden"
-                  position="relative"
-                  border="5px solid"
-                  borderColor="blue.500"
-                  boxShadow="inset 0 2px 10px rgba(0,0,0,0.5)"
-                  animate={{
-                    scaleY: team1BarScale
-                  }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
-                >
-                  <MotionBox
-                    h="100%"
-                    bg="blue.500"
-                    borderRadius="full"
-                    initial={{ width: "0%" }}
-                    animate={{ width: `${team1Percentage}%` }}
-                    transition={{
-                      duration: 0.8,
-                      ease: "easeOut",
-                      type: "spring",
-                      stiffness: 100
-                    }}
-                    position="relative"
-                    boxShadow="0 0 30px rgba(66, 153, 225, 0.8)"
-                  >
-                    <MotionBox
-                      position="absolute"
-                      top="0"
-                      left="0"
-                      right="0"
-                      bottom="0"
-                      bgGradient="linear(to-r, transparent, rgba(255,255,255,0.2), transparent)"
-                      animate={{
-                        x: ['-100%', '200%']
-                      }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        ease: "linear"
-                      }}
-                    />
-                  </MotionBox>
-
-                  {/* Vote Count Text */}
-                  <Text
-                    position="absolute"
-                    top="50%"
-                    left="50%"
-                    transform="translate(-50%, -50%)"
-                    fontSize="5xl"
-                    fontWeight="black"
-                    color="white"
-                    textShadow="2px 2px 8px rgba(0,0,0,0.8)"
-                  >
-                    {scores.team1} <Text as="span" fontSize="3xl">Votes</Text>
-                  </Text>
-                </MotionBox>
-              </Box>
+              <Text color="white" fontSize="xl" fontWeight="bold" textShadow="0 2px 4px rgba(0,0,0,0.5)">
+                {Math.round(100 - team1Percentage)}%
+              </Text>
             </Flex>
           </Box>
+        </Box>
 
-          {/* Team 2 Section */}
-          <Box position="relative">
-            <Flex align="center" gap={8} mb={4}>
-              <Box flex="1">
-                <Box mb={2}>
-                  <Heading size="xl" color="red.300">
-                    TEAM 2
-                  </Heading>
-                </Box>
-
-                {/* Progress Bar Container */}
-                <MotionBox
-                  bg="gray.800"
-                  h="120px"
-                  borderRadius="full"
-                  overflow="hidden"
-                  position="relative"
-                  border="5px solid"
-                  borderColor="red.500"
-                  boxShadow="inset 0 2px 10px rgba(0,0,0,0.5)"
-                  animate={{
-                    scaleY: team2BarScale
-                  }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
-                >
-                  <MotionBox
-                    h="100%"
-                    bg="red.500"
-                    borderRadius="full"
-                    initial={{ width: "0%" }}
-                    animate={{ width: `${team2Percentage}%` }}
-                    transition={{
-                      duration: 0.8,
-                      ease: "easeOut",
-                      type: "spring",
-                      stiffness: 100
-                    }}
-                    position="relative"
-                    boxShadow="0 0 30px rgba(229, 62, 62, 0.8)"
-                  >
-                    <MotionBox
-                      position="absolute"
-                      top="0"
-                      left="0"
-                      right="0"
-                      bottom="0"
-                      bgGradient="linear(to-r, transparent, rgba(255,255,255,0.2), transparent)"
-                      animate={{
-                        x: ['-100%', '200%']
-                      }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        ease: "linear"
-                      }}
-                    />
-                  </MotionBox>
-
-                  {/* Vote Count Text */}
-                  <Text
-                    position="absolute"
-                    top="50%"
-                    left="50%"
-                    transform="translate(-50%, -50%)"
-                    fontSize="5xl"
-                    fontWeight="black"
-                    color="white"
-                    textShadow="2px 2px 8px rgba(0,0,0,0.8)"
-                  >
-                    {scores.team2} <Text as="span" fontSize="3xl">Votes</Text>
-                  </Text>
-                </MotionBox>
-              </Box>
-
-              <MotionBox
-                position="relative"
-                animate={{
-                  scale: team2Scale,
-                  rotate: team2Scale > 1 ? [0, 5, -5, 0] : 0
-                }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-              >
-                {/* Expanding Ripple Rings */}
-                <AnimatePresence mode="sync">
-                  {team2AnimKey > 0 && (
-                    <>
-                      <MotionBox
-                        key={`ring1-${team2AnimKey}`}
-                        position="absolute"
-                        top="50%"
-                        left="50%"
-                        w="200px"
-                        h="200px"
-                        borderRadius="full"
-                        border="4px solid"
-                        borderColor="red.300"
-                        initial={{ scale: 1, opacity: 1, x: '-50%', y: '-50%' }}
-                        animate={{ scale: 2.5, opacity: 0, x: '-50%', y: '-50%' }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1, ease: "easeOut" }}
-                      />
-                      <MotionBox
-                        key={`ring2-${team2AnimKey}`}
-                        position="absolute"
-                        top="50%"
-                        left="50%"
-                        w="200px"
-                        h="200px"
-                        borderRadius="full"
-                        border="4px solid"
-                        borderColor="pink.300"
-                        initial={{ scale: 1, opacity: 1, x: '-50%', y: '-50%' }}
-                        animate={{ scale: 2.8, opacity: 0, x: '-50%', y: '-50%' }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1.2, ease: "easeOut", delay: 0.1 }}
-                      />
-                      <MotionBox
-                        key={`ring3-${team2AnimKey}`}
-                        position="absolute"
-                        top="50%"
-                        left="50%"
-                        w="200px"
-                        h="200px"
-                        borderRadius="full"
-                        border="3px solid"
-                        borderColor="red.200"
-                        initial={{ scale: 1, opacity: 1, x: '-50%', y: '-50%' }}
-                        animate={{ scale: 3.2, opacity: 0, x: '-50%', y: '-50%' }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1.4, ease: "easeOut", delay: 0.2 }}
-                      />
-                    </>
-                  )}
-                </AnimatePresence>
-
-                {/* Radiating Hearts */}
-                <AnimatePresence mode="sync">
-                  {team2AnimKey > 0 && (
-                    <>
-                      {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, idx) => {
-                        const rad = (angle * Math.PI) / 180
-                        const distance = 150
-                        return (
-                          <MotionBox
-                            key={`heart-${team2AnimKey}-${idx}`}
-                            position="absolute"
-                            top="50%"
-                            left="50%"
-                            fontSize="2xl"
-                            initial={{
-                              x: 0,
-                              y: 0,
-                              opacity: 1,
-                              scale: 0,
-                              rotate: 0
-                            }}
-                            animate={{
-                              x: Math.cos(rad) * distance,
-                              y: Math.sin(rad) * distance,
-                              opacity: 0,
-                              scale: 1.5,
-                              rotate: 360
-                            }}
-                            exit={{ opacity: 0 }}
-                            transition={{
-                              duration: 1,
-                              ease: "easeOut",
-                              delay: idx * 0.05
-                            }}
-                          >
-                            💖
-                          </MotionBox>
-                        )
-                      })}
-                    </>
-                  )}
-                </AnimatePresence>
-
-                <Image
-                  src={performer2}
-                  alt="Team 2"
-                  boxSize="200px"
-                  borderRadius="full"
-                  border="8px solid"
-                  borderColor="red.400"
-                  bg="white"
-                  objectFit="cover"
-                  boxShadow="0 0 40px rgba(229, 62, 62, 0.8)"
-                />
-
-                {/* Enhanced Particles */}
-                <AnimatePresence>
-                  {team2Particles.map(particle => (
-                    <MotionBox
-                      key={particle.id}
-                      position="absolute"
-                      top="50%"
-                      left="50%"
-                      w="16px"
-                      h="16px"
-                      borderRadius="full"
-                      bg={particle.color}
-                      initial={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                      animate={{
-                        opacity: 0,
-                        x: particle.x,
-                        y: particle.y,
-                        scale: 0
-                      }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      boxShadow={`0 0 8px ${particle.color}`}
-                    />
-                  ))}
-                </AnimatePresence>
-              </MotionBox>
-            </Flex>
-          </Box>
-
-          {/* Test Buttons - Remove Later */}
-          <Box textAlign="center" mt={8}>
-            <HStack justify="center" gap={4}>
-              <Button
-                colorScheme="blue"
-                size="sm"
-                onClick={() => {
-                  setPrevScores(scores)
-                  setScores(prev => ({ ...prev, team1: prev.team1 + 1 }))
-                }}
-              >
-                +1 Team 1
-              </Button>
-              <Button
-                colorScheme="red"
-                size="sm"
-                onClick={() => {
-                  setPrevScores(scores)
-                  setScores(prev => ({ ...prev, team2: prev.team2 + 1 }))
-                }}
-              >
-                +1 Team 2
-              </Button>
-            </HStack>
-          </Box>
-        </Stack>
-      </Container>
+      </Flex>
     </Box>
   )
 }
