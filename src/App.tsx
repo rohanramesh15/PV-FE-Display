@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import performer1 from './assets/performer1.png'
 import performer2 from './assets/performer2.png'
 
-const API_BASE_URL = "https://d173ae86c0fb.ngrok-free.app/api"
+const API_BASE_URL = "https://d173ae86c0fb.ngrok-free.app/api/scores"
 //'https://pv-be-q7m9.onrender.com/api'
 const POLL_INTERVAL = 1000 // Poll every 1 second
 
@@ -40,7 +40,7 @@ function App() {
 
   const fetchScores = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/scores`)
+      const response = await fetch(`${API_BASE_URL}`)
       console.log(response)
 
       if (!response.ok) {
