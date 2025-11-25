@@ -1,8 +1,8 @@
 import { Box, Text, Image, Flex } from '@chakra-ui/react'
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import performer1 from './assets/performer1.png'
-import performer2 from './assets/performer2.png'
+import performer1 from './assets/performer1.jpg'
+import performer2 from './assets/performer2.jpg'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
 const POLL_INTERVAL = 1000 // Poll every 1 second
