@@ -4,8 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import performer1 from './assets/performer1.png'
 import performer2 from './assets/performer2.png'
 
-const API_BASE_URL = "https://44b46f3c84f1.ngrok-free.app/api"
-//'https://pv-be-q7m9.onrender.com/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
 const POLL_INTERVAL = 1000 // Poll every 1 second
 
 interface Scores {
