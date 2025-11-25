@@ -40,9 +40,6 @@ function App() {
   const fetchScores = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/scores`)
-      console.log(response)
-      const text = await response.text()
-      console.log("Raw response:", text)
 
       if (!response.ok) {
         throw new Error('Failed to fetch scores')
