@@ -537,7 +537,7 @@ function App() {
               fontWeight="medium"
               mb={2}
             >
-              Team 1
+              Christian
             </Text>
 
             {/* Team 1 Score */}
@@ -740,7 +740,7 @@ function App() {
               fontWeight="medium"
               mb={2}
             >
-              Team 2
+              Luke
             </Text>
 
             {/* Team 2 Score */}
