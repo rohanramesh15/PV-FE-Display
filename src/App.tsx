@@ -537,7 +537,7 @@ function App() {
               fontWeight="medium"
               mb={2}
             >
-              Christian
+              Rohan
             </Text>
 
             {/* Team 1 Score */}
